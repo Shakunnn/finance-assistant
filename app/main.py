@@ -16,7 +16,7 @@ from app.database import get_db, init_db
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """应用启动生命周期：幂等初始化 18 张数据库表及本地存储目录。"""
+    """应用启动生命周期：幂等初始化 17 张数据库表及本地存储目录。"""
     init_db()
     yield
 
@@ -70,7 +70,7 @@ def health_check(request: Request, db: Session = Depends(get_db)) -> JSONRespons
     fk_violations = db.execute(text("PRAGMA foreign_key_check")).fetchall()
     return ok_response(
         data={
-            "status": "ok" if (table_count == 18 and not fk_violations) else "degraded",
+            "status": "ok" if (table_count == 17 and not fk_violations) else "degraded",
             "table_count": int(table_count or 0),
             "fk_check_empty": len(fk_violations) == 0,
             "timestamp": shanghai_now_str(),

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import unicodedata
@@ -9,7 +10,7 @@ import bcrypt
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.config import shanghai_now_str
+from app.config import BASE_DIR, shanghai_now_str
 from app.database import SessionLocal
 
 DEFAULT_TEMP_ADMIN_PASSWORD = "admin123"
@@ -62,6 +63,7 @@ def _collect_table_counts(session: Session) -> dict[str, int]:
         "conversations": "conversations",
         "messages": "messages",
         "qa_logs": "qa_logs",
+        "browse_history": "browse_history",
     }
     counts: dict[str, int] = {}
     for alias, table_name in mapping.items():
@@ -199,54 +201,44 @@ def seed_db() -> dict[str, Any]:
             ).scalar_one()
         )
 
-        # 5. documents：2 篇示例制度文档（published + sync pending + active_vector_version NULL）
+        # 5. documents：2 篇示例制度文档（存元数据 file_path + file_hash，正文在 knowledge_base/ 文件中）
         documents_data = [
             {
                 "category_id": cat_travel_id,
                 "title": "差旅费用报销管理办法（示例制度）",
-                "body_markdown": (
-                    "# 差旅费用报销管理办法（示例制度）\n\n"
-                    "> 说明：本文档为课程实训模拟制度示例，不代表真实企业制度。\n\n"
-                    "## 第三章 差旅住宿与餐补标准\n"
-                    "- **第八条（住宿标准）**：五级专员（P5）赴上海出差住宿费限额为每晚 800.00 元。\n"
-                    "- **第十条（伙食补助）**：五级专员（P5）国内出差伙食补助通用标准为每天 120.00 元。\n\n"
-                    "## 第四章 审批流程\n"
-                    "- **第十二条（差旅住宿审批）**：差旅住宿费用报销依次经直属主管、财务专员审批。\n\n"
-                    "## 第五章 特殊费用处理\n"
-                    "- **第十五条（超标准住宿处理）**：因旺季展会或紧急公务无法预订限额内酒店的，须附情况说明。"
-                ),
+                "file_path": "knowledge_base/travel-expense-reimbursement.md",
                 "version": 1,
             },
             {
                 "category_id": cat_receipt_id,
                 "title": "报销票据与凭证管理规范（示例制度）",
-                "body_markdown": (
-                    "# 报销票据与凭证管理规范（示例制度）\n\n"
-                    "> 说明：本文档为课程实训模拟制度示例，不代表真实企业制度。\n\n"
-                    "## 第二章 发票抬头与合规要求\n"
-                    "- **第六条（发票基本要求）**：报销增值税发票须填写完整公司名称及纳税人识别号，电子发票须上传原件并避免重复报销。\n\n"
-                    "## 第三章 票据遗失处理\n"
-                    "- **第九条（票据丢失处理）**：原始票据遗失时，应提供付款凭证与书面情况说明，经审核后按规定办理。"
-                ),
+                "file_path": "knowledge_base/receipt-management.md",
                 "version": 1,
             },
         ]
         doc_ids: list[int] = []
         for doc in documents_data:
+            md_file = (BASE_DIR / doc["file_path"]).resolve()
+            if not md_file.is_file():
+                raise FileNotFoundError(f"知识库示例文档文件不存在: {doc['file_path']}")
+            file_bytes = md_file.read_bytes()
+            file_hash = hashlib.sha256(file_bytes).hexdigest()
+
             session.execute(
                 text(
                     "INSERT INTO documents ("
-                    "category_id, title, body_markdown, attachment_file_id, cover_file_id, "
+                    "category_id, title, file_path, file_hash, attachment_file_id, cover_file_id, "
                     "publish_status, version, active_vector_version, sync_status, sync_error, "
                     "is_deleted, created_by, updated_by, created_at, updated_at"
                     ") VALUES ("
-                    ":category_id, :title, :body_markdown, NULL, NULL, "
+                    ":category_id, :title, :file_path, :file_hash, NULL, NULL, "
                     "'published', :version, NULL, 'pending', NULL, "
                     "0, :admin_id, :admin_id, :created_at, :updated_at"
                     ")"
                 ),
                 {
                     **doc,
+                    "file_hash": file_hash,
                     "admin_id": admin_id,
                     "created_at": now_str,
                     "updated_at": now_str,

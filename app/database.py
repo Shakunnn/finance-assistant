@@ -29,7 +29,6 @@ EXPECTED_TABLES: tuple[str, ...] = (
     "messages",
     "qa_logs",
     "browse_history",
-    "audit_logs",
 )
 
 
@@ -96,7 +95,7 @@ def _split_sql_statements(sql_script: str) -> list[str]:
 
 def init_db(target_engine: Engine | None = None) -> dict[str, Any]:
     """
-    幂等初始化数据库（18 张业务表及全部索引）。
+    幂等初始化数据库（17 张业务表及全部索引）。
     只通过 SQLAlchemy Session + text() 执行 schema.sql，不引入 ORM 模型。
     """
     settings.ensure_dirs()

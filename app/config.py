@@ -71,6 +71,9 @@ class Settings(BaseModel):
         "DATABASE_URL", f"sqlite:///{(BASE_DIR / 'data' / 'app.db').as_posix()}"
     )
     sqlite_busy_timeout_ms: int = int(os.getenv("SQLITE_BUSY_TIMEOUT_MS", "5000"))
+    knowledge_base_dir: Path = Path(
+        os.getenv("KNOWLEDGE_BASE_DIR", str(BASE_DIR / "knowledge_base"))
+    )
     upload_dir: Path = Path(os.getenv("UPLOAD_DIR", str(BASE_DIR / "data" / "uploads")))
     backup_dir: Path = Path(os.getenv("BACKUP_DIR", str(BASE_DIR / "data" / "backups")))
 
@@ -107,7 +110,12 @@ class Settings(BaseModel):
             if not db_path.is_absolute():
                 db_path = (BASE_DIR / db_path).resolve()
             db_path.parent.mkdir(parents=True, exist_ok=True)
-        for directory in (self.upload_dir, self.backup_dir, self.chroma_persist_dir):
+        for directory in (
+            self.knowledge_base_dir,
+            self.upload_dir,
+            self.backup_dir,
+            self.chroma_persist_dir,
+        ):
             target = directory if directory.is_absolute() else (BASE_DIR / directory).resolve()
             target.mkdir(parents=True, exist_ok=True)
 

@@ -1,6 +1,6 @@
 # 财务报销制度智能咨询助手 — 项目总览 README
 
-> 依据：《概要设计说明书-2026-10-28修订版》（以下简称“概要设计”）第 4 章（数据库）、第 5 章（接口）为准。
+> 依据：《概要设计说明书-2026-10-28老师反馈修订版v0.0.3》（以下简称“概要设计”）第 4 章（数据库）、第 5 章（接口）为准。老师反馈修订后，知识库文档正文不再存数据库，audit_logs 表已删除，表数由 18 张改为 17 张。
 > 本文件写于 2026-10-28，反映的是**从头重建的新项目**，不是旧项目。
 > 本文件是 push 到仓库用的版本：所有路径都是仓库内的相对路径，不依赖任何个人电脑的绝对路径；所有命令都给出 Windows 和 macOS / Linux 两种写法，Windows 也能直接跑。
 > 旧项目已存档为 `finance-assistant-old-20261028`，不再往上打补丁，旧库迁移、旧 seed、旧接口一律作废。
@@ -25,9 +25,9 @@
 | 步骤 | 状态 | 说明 |
 |---|---|---|
 | 第 1 步：骨架 + `init_db()` | ✅ 已完成并验证 | 空库建表、二次建表幂等、`/api/health` 200 |
-| 第 2 步：18 张表 schema | ✅ 已完成并验证 | 列、类型、非空、默认值、外键、索引、CHECK、部分唯一索引都验过，见第 5 节 |
+| 第 2 步：17 张表 schema | ✅ 已完成并验证 | 列、类型、非空、默认值、外键、索引、CHECK、部分唯一索引都验过，见第 5 节；2026-10-28 晚按老师反馈修订版 v0.0.3 从 18 张改为 17 张并重验通过（verify_step3_v003.py，PASS=56 FAIL=0） |
 | 第 3 步：seed 基础数据 | ✅ 已完成并验证 | 行数和字段都抽查过，见第 6 节 |
-| 第 4 步：61 个接口 | ⏳ 未开始做，prompt 已给 | 按第 5 章分组做，见第 7 节；做完一项勾一项，不要说“全部完成” |
+| 第 4 步：61 个接口 | ⏳ 未开始做 | 按概要设计 v0.0.3 第 5 章分组做，见第 7 节；做完一项勾一项，不要说“全部完成”。原附录 A 的接口开发 prompt 已于 2026-10-28 删除，做接口前需按 v0.0.3 重新给 prompt，不要用旧 prompt |
 | 第 5 步：前端 Vue3 | ⏳ 未开始 | 按概要设计第 7 章页面结构搭，主线是登录、首页、详情、问答 |
 | 向量化 Worker（BGE + Chroma） | ⏳ 未开始 | 文档保存时先登记 sync_jobs，Worker 本身缺口要明说，不要假装已向量化 |
 
@@ -79,6 +79,7 @@ finance-assistant/       # git clone 仓库后得到的项目根目录，以下�
     main.py              # FastAPI 入口，含 /api/health
     database.py          # init_db()、SessionLocal、EXPECTED_TABLES
     seed.py              # seed_db()，只在空库上跑一次
+  knowledge_base/        # RAG 知识库文件（.md），documents 表只存 file_path + file_hash，正文不在数据库中
   data/                  # gitignore：app.db、chroma、uploads
   # 注意：verify_step3.py 等验证脚本只在本地跑，不要 push 进仓库
 ```
@@ -118,9 +119,9 @@ python -c "from app.seed import seed_db; print(seed_db())"
 - BGE 向量化在没有 GPU 的 Windows 机器上走 CPU 也能跑，只是慢一点，不要因为没 GPU 就改模型或改代码；有 RTX 等 GPU 的机器按项目里的设备选择逻辑走（cuda → mps → cpu），不要硬编码设备。
 - 文件一律 UTF-8，换行和编码问题先检查 Git 设置，不要把个人编辑器的绝对路径、个人用户名写进提交。
 
-## 5. 表参数：18 张表
+## 5. 表参数：17 张表
 
-约定（全部 18 张表适用）：
+约定（全部 17 张表适用）：
 
 - 时间：库内统一 Asia/Shanghai 本地时间，格式 `YYYY-MM-DD HH:MM:SS`。实现上是 `strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours')`，不是 `datetime('now','localtime')`，这样不管服务器时区怎么设，结果都是上海时间。中国无夏令时，+8 没有时令问题。
 - 金额：库内一律整数分，字段名后缀 `_cents`；对外是元（两位小数字符串），转换在服务层做。
@@ -139,8 +140,8 @@ python -c "from app.seed import seed_db; print(seed_db())"
 | 4 | auth_sessions | 登录会话 | id 是 TEXT（JWT 里的 sid，UUID），不是自增整数；expires_at 默认签发后 120 分钟 |
 | 5 | categories | 文档分类 | name 唯一（2–20 字） |
 | 6 | files | 文件元信息 | storage_key 唯一；kind 只允许 attachment / cover |
-| 7 | documents | 制度文档 | publish_status 与 sync_status 分离；version ≥1 |
-| 8 | document_chunks | 知识块映射 | UNIQUE(document_id, document_version, chunk_no)；vector_id 唯一 |
+| 7 | documents | 制度文档（元数据，不存正文） | file_path + file_hash；publish_status 与 sync_status 分离；version ≥1 |
+| 8 | document_chunks | 知识块向量索引（不存正文） | UNIQUE(document_id, document_version, chunk_no)；vector_id 唯一 |
 | 9 | sync_jobs | 同步任务 | UNIQUE(document_id, target_version, action)；attempts 只能 0–3 |
 | 10 | reimbursement_standards | 差旅标准 | UNIQUE(city_code, grade_code, expense_type_code, effective_from)；currency 只允许 CNY |
 | 11 | approval_flows | 审批流程节点 | UNIQUE(flow_code, effective_from, step_no)；组内 step_no 从 1 连续 |
@@ -150,7 +151,7 @@ python -c "from app.seed import seed_db; print(seed_db())"
 | 15 | messages | 会话消息 | UNIQUE(conversation_id, request_id, role)；role 只允许 user / assistant |
 | 16 | qa_logs | 问答日志 | assistant_message_id 唯一；没有 updated_at |
 | 17 | browse_history | 浏览历史 | UNIQUE(user_id, document_id)；同一员工同一文档只有一条 |
-| 18 | audit_logs | 审计日志 | 只追加；后台不提供修改 / 删除入口；detail_json 先脱敏 |
+
 
 没有的表 / 字段，不要自己加：旧项目的 `user_doc_actions`（收藏）、`categories.slug / description`、`document_chunks.token_count`、`qa_log.feedback_*`、`answer_chars`，概要设计里都没有，新 schema 里也没有。
 
@@ -170,9 +171,9 @@ python -c "from app.seed import seed_db; print(seed_db())"
 
 **files（9 列，无 updated_at）**：id，kind TEXT NOT NULL（attachment / cover），original_name TEXT NOT NULL（1–255 字），storage_key TEXT NOT NULL UNIQUE，mime_type TEXT NOT NULL，size_bytes INTEGER NOT NULL，sha256 TEXT NOT NULL（64 位），uploaded_by INTEGER NOT NULL，created_at。外键：uploaded_by → users(id) RESTRICT。附件 ≤20MiB、封面 ≤5MiB 由服务层按 kind 校验。
 
-**documents（16 列）**：id，category_id NOT NULL，title TEXT NOT NULL（1–100 字），body_markdown TEXT NOT NULL（非空），attachment_file_id NULL，cover_file_id NULL，publish_status TEXT NOT NULL DEFAULT 'draft'（draft / published / unpublished），version INTEGER NOT NULL DEFAULT 1（≥1），active_vector_version NULL（≤ version），sync_status TEXT NOT NULL DEFAULT 'pending'（pending / syncing / synced / failed），sync_error NULL，is_deleted DEFAULT 0，created_by / updated_by NOT NULL，created_at / updated_at。外键全部 RESTRICT。
+**documents（17 列，元数据表，不存正文）**：id，category_id NOT NULL，title TEXT NOT NULL（1–100 字），file_path TEXT NOT NULL（knowledge_base/ 下的相对路径，例如 knowledge_base/travel-expense-reimbursement.md；正文在文件里，不在数据库中，详情页按此路径读文件），file_hash TEXT NOT NULL（文件内容的 SHA-256，长度 64；文件不存在或 hash 不一致时同步任务置失败），attachment_file_id NULL，cover_file_id NULL，publish_status TEXT NOT NULL DEFAULT 'draft'（draft / published / unpublished），version INTEGER NOT NULL DEFAULT 1（≥1），active_vector_version NULL（≤ version），sync_status TEXT NOT NULL DEFAULT 'pending'（pending / syncing / synced / failed），sync_error NULL，is_deleted DEFAULT 0，created_by / updated_by NOT NULL，created_at / updated_at。外键全部 RESTRICT。
 
-**document_chunks（10 列，无 updated_at）**：id，document_id NOT NULL，document_version NOT NULL（≥1），chunk_no NOT NULL（≥0），vector_id TEXT NOT NULL UNIQUE，section_path TEXT NOT NULL DEFAULT ''（识别不出条款时保持空串，不能编造），content TEXT NOT NULL（非空），content_hash TEXT NOT NULL（64 位），embedding_model TEXT NOT NULL，created_at。
+**document_chunks（9 列，无 updated_at，向量索引，不存正文）**：id，document_id NOT NULL，document_version NOT NULL（≥1），chunk_no NOT NULL（≥0），vector_id TEXT NOT NULL UNIQUE，section_path TEXT NOT NULL DEFAULT ''（识别不出条款时保持空串，不能编造），content_hash TEXT NOT NULL（64 位），embedding_model TEXT NOT NULL，created_at。正文内容不在此表，检索时按 vector_id 到 Chroma 取向量、按 file_path 到 knowledge_base/ 取原文。
 
 **sync_jobs（13 列）**：id，document_id NOT NULL，target_version NOT NULL（≥1），action TEXT NOT NULL（rebuild / remove），status TEXT NOT NULL DEFAULT 'pending'（pending / running / succeeded / failed / superseded），attempts DEFAULT 0（0–3），next_retry_at NULL，lease_until NULL，last_error NULL，started_at NULL，finished_at NULL，created_at / updated_at。外键：document_id → documents(id) RESTRICT。
 
@@ -192,11 +193,11 @@ python -c "from app.seed import seed_db; print(seed_db())"
 
 **browse_history（5 列，无 created_at）**：id，user_id NOT NULL，document_id NOT NULL，last_viewed_at TEXT NOT NULL DEFAULT 上海时间，view_count INTEGER NOT NULL DEFAULT 1（≥1）。
 
-**audit_logs（10 列，无 updated_at）**：id，actor_user_id NULL（未登录可空），action TEXT NOT NULL，target_type TEXT NOT NULL（1–40 字），target_id TEXT NULL，request_id TEXT NOT NULL，result TEXT NOT NULL（success / failure），detail_json TEXT NOT NULL DEFAULT '{}'（合法 JSON 对象，先脱敏），client_ip NULL，created_at NOT NULL。
+
 
 ### 5.3 关键索引（已验证）
 
-- 普通索引（按概要设计第 4 章）：users(role, is_active, department_id)、documents(category_id, publish_status, is_deleted, updated_at DESC) 和 (sync_status, updated_at)、standards(expense_type_code, city_code, grade_code, effective_from, effective_to)、approval(expense_type_code, effective_from, min_amount_cents)、special(scene_code, is_active, effective_from, effective_to)、faq(category_id, is_active)、conversations(user_id, is_deleted, updated_at DESC)、messages(conversation_id, id DESC) 和 (reply_to_message_id)、qa_logs(created_at, user_id, is_refused) 和 (answer_type, created_at)、browse(user_id, last_viewed_at DESC)、audit(created_at, action) 和 (actor_user_id, created_at)，其余见建表 SQL。
+- 普通索引（按概要设计第 4 章）：users(role, is_active, department_id)、documents(category_id, publish_status, is_deleted, updated_at DESC) 和 (sync_status, updated_at)、standards(expense_type_code, city_code, grade_code, effective_from, effective_to)、approval(expense_type_code, effective_from, min_amount_cents)、special(scene_code, is_active, effective_from, effective_to)、faq(category_id, is_active)、conversations(user_id, is_deleted, updated_at DESC)、messages(conversation_id, id DESC) 和 (reply_to_message_id)、qa_logs(created_at, user_id, is_refused) 和 (answer_type, created_at)、browse(user_id, last_viewed_at DESC)，其余见建表 SQL。
 - **部分唯一索引（两条，缺一不可）**：
   - `uq_sync_jobs_doc_running: CREATE UNIQUE INDEX ... ON sync_jobs(document_id) WHERE status = 'running'` —— 一个文档同一时刻最多一个 running 任务。
   - `uq_messages_conv_generating: CREATE UNIQUE INDEX ... ON messages(conversation_id) WHERE role = 'assistant' AND status = 'generating'` —— 一个会话最多一条生成中的助手消息。
@@ -222,13 +223,13 @@ seed 只在空库上跑一次，非空直接跳过，不重复插。seed 脚本�
 | dict_items | 8 | city：BEIJING 北京、SHANGHAI 上海；grade：P5 五级专员、P6 六级主管；expense_type：HOTEL 住宿、MEAL_ALLOWANCE 餐补；scene：LOST_RECEIPT 票据丢失、OVER_STANDARD 超标准 |
 | users | 1 | admin，系统管理员，role=admin，department_id 可空，bcrypt 哈希（`$2b$12$`），must_change_password=1 |
 | categories | 2 | 差旅报销、票据规范 |
-| documents | 2 | 差旅费用报销管理办法（示例制度）、报销票据与凭证管理规范（示例制度），published + pending + active_vector_version=NULL |
+| documents | 2 | 差旅费用报销管理办法（示例制度）、报销票据与凭证管理规范（示例制度），published + pending + active_vector_version=NULL；正文在 knowledge_base/ 下的两个 .md 文件里，documents 表只存 file_path + file_hash |
 | reimbursement_standards | 2 | SHANGHAI / P5 / HOTEL / 80000 分 / night / CNY；* / P5 / MEAL_ALLOWANCE / 12000 分 / day / CNY |
 | approval_flows | 2 | 同一组 TRAVEL_HOTEL / HOTEL，步骤 1 直属主管、步骤 2 财务专员，min_amount_cents=0 |
 | special_expense_rules | 1 | OVER_STANDARD，keywords=超标准，条件是一句人话，不是 JSON |
 | faq | 2 | 规范化按第 8 节规则生成，例如 `P5员工去上海出差住宿标准是多少？` → `p5员工去上海出差住宿标准是多少` |
 | sync_jobs | 2 | 文档 1、文档 2 各一条 rebuild、pending、target_version=1 |
-| document_chunks / conversations / messages / qa_logs / browse_history / audit_logs / auth_sessions / files | 0 | 运行时才产生的数据，seed 里一律不插 |
+| document_chunks / conversations / messages / qa_logs / browse_history / auth_sessions / files | 0 | 运行时才产生的数据，seed 里一律不插（document_chunks 只在向量化后才有索引行，seed 里不插假分块） |
 
 管理员密码从环境变量 `ADMIN_PASSWORD` 读，没设置时用本地测试临时密码，并在输出里提醒第一次登录必须改密码。**不要拿这个 seed 库当正式环境用，第一次登录改掉密码之后才算安全。**
 
@@ -275,7 +276,7 @@ seed 只在空库上跑一次，非空直接跳过，不重复插。seed 脚本�
 | 编号 | 方法与路径 | 调用者 | 说明 |
 |---|---|---|---|
 | DOC-01 | GET /api/categories | 员工 | document_count 只统计员工可见文档 |
-| DOC-02 | GET /api/documents?category_id&keyword&page&page_size | 员工 | keyword 1–50，标题与正文关键词参数化匹配；page_size 固定 10；过滤下架和逻辑删除；**不调用向量库** |
+| DOC-02 | GET /api/documents?category_id&keyword&page&page_size | 员工 | keyword 1–50，标题关键字走数据库工具、正文检索走 RAG 工具；page_size 固定 10；过滤下架和逻辑删除 |
 | DOC-03 | GET /api/documents/{document_id} | 员工 | 详情更新 browse_history，写失败不阻止正文读取；下架 / 不存在 404；Markdown 安全处理 |
 
 **浏览历史 HIS（3 个，员工仅本人）**
@@ -306,10 +307,10 @@ seed 只在空库上跑一次，非空直接跳过，不重复插。seed 脚本�
 | 编号 | 方法与路径 | 说明 |
 |---|---|---|---|
 | ADOC-01 | GET /api/admin/documents?keyword&category_id&publish_status&sync_status&page&page_size | 默认排除逻辑删除，支持同步失败筛选 |
-| ADOC-02 | POST /api/admin/documents | Body DocWrite；202，返回 {document, job_id}；事务保存文档与 rebuild 任务；正文未传时从附件解析 |
+| ADOC-02 | POST /api/admin/documents | 新建文档，Body DocWrite（file_path + file_hash，不传 body_markdown）；202，返回 {document, job_id}；事务保存文档元数据与 rebuild 任务；仅上传附件时先落盘为知识库文件再保存 |
 | ADOC-03 | GET /api/admin/documents/{document_id} | 后台详情 |
-| ADOC-04 | PUT /api/admin/documents/{document_id} | Body DocWrite + expected_version；正文、标题、分类、附件变化递增 version；版本冲突 409；202 |
-| ADOC-05 | DELETE /api/admin/documents/{document_id}?expected_version | 先逻辑删除并提交 remove 任务；202 |
+| ADOC-04 | PUT /api/admin/documents/{document_id} | 编辑文件或替换附件，Body DocWrite（file_path + file_hash）+ expected_version；文件、标题、分类、附件变化递增 version；版本冲突 409；202 |
+| ADOC-05 | DELETE /api/admin/documents/{document_id}?expected_version | 删除文档，先逻辑删除并提交 remove 任务；202 |
 | ADOC-06 | PUT /api/admin/documents/{document_id}/publication | publish_status=published\|unpublished + expected_version；发布执行 rebuild，下架立即隐藏并 remove；202 |
 | ADOC-07 | GET /api/admin/documents/{document_id}/sync-status | 前端仅 pending / syncing 每 2 秒轮询，终态停止 |
 | ADOC-08 | POST /api/admin/documents/{document_id}/sync/retry | Body target_version；只重试当前目标版本；进行中幂等返回原任务；过期版本 409；202 |
@@ -378,7 +379,7 @@ seed 只在空库上跑一次，非空直接跳过，不重复插。seed 脚本�
 
 | 编号 | 方法与路径 | 说明 |
 |---|---|---|---|
-| LOG-01 | GET /api/admin/qa-logs?start_date&end_date&user_id&is_refused&knowledge_supplemented&page&page_size | 仅运营审计入口可读 |
+| LOG-01 | GET /api/admin/qa-logs?start_date&end_date&user_id&is_refused&knowledge_supplemented&page&page_size | 仅运营操作日志入口可读 |
 | LOG-02 | PATCH /api/admin/qa-logs/{log_id}/supplement | knowledge_supplemented:bool；只标记处理结果，不自动生成 FAQ 或修改文档 |
 | LOG-03 | GET /api/admin/qa-logs/export | 与 LOG-01 筛选相同，不接收分页；Excel 二进制，文件名 `问答日志_YYYY-MM-DD.xlsx`，最多 10000 条；以 =、+、-、@ 起始文本转为安全文本防公式注入 |
 
@@ -393,10 +394,10 @@ seed 只在空库上跑一次，非空直接跳过，不重复插。seed 脚本�
 | 编号 | 方法与路径 | 说明 |
 |---|---|---|---|
 | USER-01 | GET /api/admin/users?keyword&department_id&is_active&page&page_size | 仅返回 employee，无密码哈希及失败次数 |
-| USER-02 | PATCH /api/admin/users/{user_id}/status | is_active:bool；禁用撤销全部会话；记录审计 |
-| USER-03 | POST /api/admin/users/{user_id}/reset-password | new_password 8–20（含字母与数字）；只返回结果不回传密码；设置强制改密，撤销全部登录会话；只写脱敏审计 |
+| USER-02 | PATCH /api/admin/users/{user_id}/status | is_active:bool；禁用撤销全部会话；记录操作日志（不设 audit_logs 表） |
+| USER-03 | POST /api/admin/users/{user_id}/reset-password | new_password 8–20（含字母与数字）；只返回结果不回传密码；设置强制改密，撤销全部登录会话；只写脱敏操作日志 |
 
-> 另外，新项目里已有的 `/api/health` 不在上面 61 个里，它是健康检查接口，返回 `{status:"ok", table_count:18, fk_check_empty:true, timestamp}`，不要把它和业务接口混在一起数。
+> 另外，新项目里已有的 `/api/health` 不在上面 61 个里，它是健康检查接口，返回 `{status:"ok", table_count:17, fk_check_empty:true, timestamp}`，不要把它和业务接口混在一起数。
 
 ## 8. 问答流程（概要设计第 5 章，CHAT-01 / CHAT-02 共用）
 
@@ -437,38 +438,13 @@ Unicode NFKC（全角转半角）→ 去首尾空白、连续空白合并为一�
 - `files.size_bytes` 的 kind 专属上限（附件 20MiB、封面 5MiB）由服务层按 kind 校验，数据库 CHECK 只做了基础范围。
 - 旧项目、旧库、旧迁移说明都已作废，不要再从旧代码里抄字段、抄接口、抄 seed。
 
-## 附录 A：61 个接口开发 prompt（直接复制可用）
 
-> 下面这段就是做第 4 步接口时用的 prompt，附在这里，开发时直接复制给开发助手就能用，不用重新写。
-> 附上本 README 和《概要设计说明书-2026-10-28修订版.docx》一起用，接口清单以本 README 第 7 节和概要设计第 5 章为准。
 
-```
-请在本仓库项目里做第 4 步：接口，不要改 schema、不要改 seed、不要推送。
 
-前提：18 张表和 seed 已经做完并验过，departments=3、dict_items=8、admin=1、documents=2、standards=2、flows=2、special=1、faq=2，这些都不要再动。
 
-1. 唯一依据
-- 随 prompt 附上的《概要设计说明书-2026-10-28修订版.docx》第 5 章是唯一标准，61 个接口按第 5 章的分组来，不要自己发明接口、不要改路径、不要改字段名。
-- 先从第 5 章里把 61 个接口列成一张清单，做完一项勾一项，最后把清单和完成情况一起交出来，漏了哪个要明说，不要说“全部完成”。
 
-2. 按这个顺序做，每组做完先自测
-- 4a 认证与公共入口：注册、登录、登出、部门选项、首页卡片、封面缩略。注册只能建 employee，admin 只能由 seed 预置；登录要写 auth_sessions，JWT 里带 sid，服务端校验未过期、未撤销、账号仍启用，有效期 120 分钟。
-- 4b 文档与分类：分类管理、文档管理、文件上传、文档详情、分类文档列表、文档搜索、浏览历史。详情读取成功后要写 browse_history，写失败不能阻止正文读取；文档搜索走数据库关键词，不要走向量库；附件 ≤20MiB、封面 ≤5MiB。
-- 4c 结构化数据管理：字典、部门、标准、审批、特殊、FAQ 的后台维护。金额对外是元（两位小数字符串），库内是整数分，转换在服务层做；标准、审批、特殊、FAQ 的 source_version、source_clause、updated_by 都必填。
-- 4d 会话与问答：会话 CRUD、消息历史、问答 SSE。问答顺序按第 5 章走：先 FAQ 文本匹配（命中直接返回并 hit_count+1，含金额的答案仍要经标准工具复核），再结构化工具（金额、审批、特殊），再向量 + 关键词 RRF Top5，最后才是 DeepSeek；查不到就拒答，不要编造。SSE 要真流式，首字 ≤3 秒；重试要复用原问题和原回答记录，不要另起一轮。
-- 4e 日志与后台：问答日志、看板、用户管理、同步状态。文档保存、上下架时要同步写 sync_jobs，状态查询和手动重试要能跑；向量化 Worker 本身如果这一步做不完，先把任务登记和状态流转做对，Worker 的缺口要明说，不要假装已经向量化了。
 
-3. 统一约定，一律按第 5 章来
-- 成功响应：{code:"OK", message:"成功", data:业务对象, request_id:UUID}；失败响应：{code:错误码, message:原因, data:null, request_id:UUID, details:字段错误数组或null}。
-- 状态码：201 创建、202 异步受理、200 成功、401 未登录、403 无权限、404 不存在、409 冲突、413 文件过大、422 参数不合法。
-- 权限：除公开注册、登录、部门选项、首页卡片、封面缩略外，一律要 Authorization: Bearer <JWT>；员工只能看本人会话和历史，后台接口仅 admin。
-- 分页：Page 格式 {items, page, page_size, total}，page 默认 1、page_size 默认 10、范围 1–50，员工文档列表固定 10；消息 limit 默认 20、范围 1–20。
-- 时间：接口的日期用 YYYY-MM-DD，时间用带时区的 ISO 8601（Asia/Shanghai），不要直接把库里的本地时间原样当 ISO 时间返回。
-- 游客只有首页卡片，详情和问答一律要登录。
 
-4. 验证，必须跑过再交
-- 用 TestClient 对每组接口至少测：公开接口不用登录能通、受保护接口没 token 返回 401、员工调后台接口返回 403、分页和参数错误返回 422、FAQ 命中、标准精确查询、会话创建和续聊、问答拒答这几条主线。
-- 原有的 /api/health、init_db 18 张表、seed 行数这些测试不能被改坏，跑一遍确认还是过的。
-- 验证命令和结果原样贴出来，哪些接口还没做、哪些是占位，单独列一张表，不要混在“完成”里。
-- 交的东西只有接口代码和测试，不要改 schema、不要改 seed、不要推送。
-```
+
+
+

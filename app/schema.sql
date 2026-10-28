@@ -1,5 +1,5 @@
 -- 财务报销制度智能咨询助手（FA）数据库 Schema
--- 严格依据《概要设计说明书-2026-10-28修订版.docx》第 4 章 §4.3 定义（18 张表）
+-- 严格依据《概要设计说明书-2026-10-28老师反馈修订版v0.0.3.docx》第 4 章 §4.3 定义（17 张表）
 -- 幂等执行：全部采用 CREATE TABLE IF NOT EXISTS / CREATE INDEX IF NOT EXISTS
 
 -- 1. 部门字典 departments
@@ -98,7 +98,8 @@ CREATE TABLE IF NOT EXISTS documents (
     id INTEGER PRIMARY KEY,
     category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
     title TEXT NOT NULL CHECK (length(trim(title)) BETWEEN 1 AND 100),
-    body_markdown TEXT NOT NULL CHECK (length(trim(body_markdown)) > 0),
+    file_path TEXT NOT NULL CHECK (length(trim(file_path)) > 0),
+    file_hash TEXT NOT NULL CHECK (length(file_hash) = 64),
     attachment_file_id INTEGER REFERENCES files(id) ON DELETE RESTRICT,
     cover_file_id INTEGER REFERENCES files(id) ON DELETE RESTRICT,
     publish_status TEXT NOT NULL DEFAULT 'draft' CHECK (publish_status IN ('draft', 'published', 'unpublished')),
@@ -128,7 +129,6 @@ CREATE TABLE IF NOT EXISTS document_chunks (
     chunk_no INTEGER NOT NULL CHECK (chunk_no >= 0),
     vector_id TEXT NOT NULL UNIQUE CHECK (length(trim(vector_id)) > 0),
     section_path TEXT NOT NULL DEFAULT '',
-    content TEXT NOT NULL CHECK (length(trim(content)) > 0),
     content_hash TEXT NOT NULL CHECK (length(content_hash) = 64),
     embedding_model TEXT NOT NULL CHECK (length(trim(embedding_model)) > 0),
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours')),
@@ -327,21 +327,3 @@ CREATE TABLE IF NOT EXISTS browse_history (
 );
 CREATE INDEX IF NOT EXISTS idx_browse_history_user_viewed
     ON browse_history(user_id, last_viewed_at DESC);
-
--- 18. 审计日志 audit_logs
-CREATE TABLE IF NOT EXISTS audit_logs (
-    id INTEGER PRIMARY KEY,
-    actor_user_id INTEGER REFERENCES users(id) ON DELETE RESTRICT,
-    action TEXT NOT NULL CHECK (length(trim(action)) > 0),
-    target_type TEXT NOT NULL CHECK (length(trim(target_type)) BETWEEN 1 AND 40),
-    target_id TEXT,
-    request_id TEXT NOT NULL CHECK (length(trim(request_id)) > 0),
-    result TEXT NOT NULL CHECK (result IN ('success', 'failure')),
-    detail_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(detail_json) AND json_type(detail_json) = 'object'),
-    client_ip TEXT,
-    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours'))
-);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_created_action
-    ON audit_logs(created_at, action);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_created
-    ON audit_logs(actor_user_id, created_at);

@@ -2,14 +2,14 @@
 
 > 写于 2026-10-28。
 > 本文件和同目录 `README.md` 配合使用：`README.md` 写的是框架、技术栈、表参数、接口清单，本文件写的是开发和配置时要注意的事。
-> 唯一依据：《概要设计说明书-2026-10-28修订版》（以下简称“概要设计”）。
+> 唯一依据：《概要设计说明书-2026-10-28老师反馈修订版v0.0.3》（以下简称“概要设计”）。老师反馈修订后：知识库正文文件化、audit_logs 表删除，表数 17 张；原附录 A 的接口开发 prompt 已删除，做接口前需按 v0.0.3 重新给 prompt。
 
 ## 1. 项目现状
 
 - 旧项目已经放弃打补丁，2026-10-28 当天决定按最终定的概要设计从头重建，旧库迁移、旧 seed、旧接口一律作废。
-- 新项目就是 push 到仓库后的 main，旧代码只留 Git 历史存档，不要再从旧代码里抄字段、抄接口、抄 seed。
-- 当前进度：骨架 + 18 张表 + seed 已做完并验过，接口（61 个）和前端还没做。
-- 仓库：私有仓库 `Shakunnn/finance-assistant`，main。新项目还没推送，旧仓库 main 的头是 `c78ebc7`，之前说的 `83ab89e` 在仓库里找不到，不要再去对那笔账。
+- 新项目就是 push 到仓库后的 main，旧代码只留 Git 历史存档，不要再从旧代码里抄字段、抄接口、抄 seed。注意：仓库远端 main 目前还是旧的 18 表版本，Mac 本地已改为 17 表，推送前必须确认推的是本地 17 表版本。
+- 当前进度：骨架 + 17 张表 + seed 已做完并验过（2026-10-28 晚按 v0.0.3 重验，verify_step3_v003.py PASS=56 FAIL=0），接口（61 个）和前端还没做。
+- 仓库：私有仓库 `Shakunnn/finance-assistant`，main。2026-10-28 中午已推送过旧 18 表版本（586631b、5b4f856），新的 17 表版本（v0.0.3）目前只在 Mac 本地，还没推送；之前说的 `83ab89e` 在仓库里找不到，不要再去对那笔账。
 
 ## 2. 配置环境时注意
 
@@ -45,11 +45,11 @@
 
 - SRS 云端 Embedding → 已推翻，改本地 BGE；SRS §§2.5 / 8 的云端写法还没同步改，暂时不动 SRS。
 - 本地 per-machine 部署、800 / 150 切块、user / admin、stream 占位 → 已被 SRS 标准推翻，之后又以概要设计为准，不要再用。
-- 旧项目 12 表 → 18 表的迁移方案 → 已作废，改为从头重建，新 schema 直接就是 18 表最终版。
+- 旧项目 12 表 → 18 表的迁移方案 → 已作废，改为从头重建；2026-10-28 晚又按老师反馈修订为 17 表最终版（删 audit_logs、documents 改 file_path/file_hash、document_chunks 删 content），不要再用 18 表版本。
 
 ## 4. 数据库开发时注意
 
-- 18 张表、列、类型、非空、默认值、外键、索引、CHECK、部分唯一索引，见 `README.md` 第 5 节，开发时不要自己加表、加列、改字段名。
+- 17 张表、列、类型、非空、默认值、外键、索引、CHECK、部分唯一索引，见 `README.md` 第 5 节，开发时不要自己加表、加列、改字段名。documents 是元数据表（file_path + file_hash，不存正文），document_chunks 是向量索引（不存正文），没有 audit_logs 表。
 - 外键删除规则一律 `ON DELETE RESTRICT`，被引用时不能物理删除；账号用 `is_active`、文档和会话用 `is_deleted` 做逻辑控制。
 - 没有的表 / 字段，不要自己加：旧项目的 `user_doc_actions`（收藏）、`categories.slug / description`、`document_chunks.token_count`、`qa_log.feedback_*`、`answer_chars`，概要设计里都没有，新 schema 里也没有。
 - 时间默认值、金额单位、0/1 字段、JSON 字段的规则，见 `README.md` 第 5 节开头，写新代码时按那个来。
@@ -105,7 +105,7 @@ FAQ 文本匹配 → 结构化工具（金额、审批、特殊）→ 向量 + �
 - seed 只在空库上跑一次，非空直接跳过，不重复插；跑之前先检查表是不是空的，已经有数据就停下来。
 - seed 里的数据全部是示例、非真实制度：部门、字典、admin、分类、示例文档、标准、流程、特殊规则、FAQ，见 `README.md` 第 6 节。
 - 管理员密码从环境变量 `ADMIN_PASSWORD` 读，没设置时用本地测试临时密码，并在输出里提醒第一次登录必须改密码，`must_change_password=1`。不要拿这个 seed 库当正式环境用。
-- 会话、消息、问答日志、浏览历史、审计日志、登录会话这些运行时才产生的数据，seed 里一律不插，从空开始。
+- 会话、消息、问答日志、浏览历史、登录会话这些运行时才产生的数据，seed 里一律不插，从空开始。注意：已没有审计日志表，不要再往所谓 audit_logs 里写数据，操作日志按 v0.0.3 的 LOG/USER/OPS 接口写法处理。
 - 文档先是 published + pending + `active_vector_version=NULL`，不要插假分块；给每篇文档在 sync_jobs 里插一条 rebuild、pending 的任务就行。
 - seed 里的部门、职级中文名、标准金额、FAQ 都是示例，正式使用前必须由管理员换成真实制度，并把示例文档、示例标准逐条核对后再启用。
 
@@ -113,14 +113,14 @@ FAQ 文本匹配 → 结构化工具（金额、审批、特殊）→ 向量 + �
 
 - `.env`、`.env.example` 里只放占位符，真实值本地自己填。
 - `JWT_SECRET`、`DEEPSEEK_API_KEY`、Tavily 密钥、管理员密码，一律不进代码、不进 seed SQL、不进 README、不进本文件。
-- 审计日志 `detail_json` 写入前必须脱敏，不能保存密码、完整令牌或供应商密钥。
+- 操作日志的 detail_json 写入前必须脱敏，不能保存密码、完整令牌或供应商密钥（v0.0.3 已删除 audit_logs 表，不要再建审计表）。
 - 一次性 key / 密码只暂用、不入记忆、不入文件、不入报告，用完要核查无残留。
 
 ## 9. 推送前注意
 
-- 新项目还没推送，推送前必须先确认推的是新项目、不是旧项目，推完在 GitHub 网页上看一眼 main 里的 schema 是不是 18 张表。
-- 推送前先跑一遍：删库 → `init_db()` → `seed_db()` → `/api/health`，确认还是 18 张表、seed 行数都对。
-- 推送时不要把 `data/`、`verify_step3.py` 等本地验证脚本、`ADMIN_PASSWORD`、真实密钥推上去；`data/` 是 gitignore 的，验证脚本只在本地跑。
+- 推送前必须先确认推的是新项目、不是旧项目，推完在 GitHub 网页上看一眼 main 里的 schema 是不是 17 张表、documents 是不是 file_path/file_hash。
+- 推送前先跑一遍：删库 → `init_db()` → `seed_db()` → `/api/health`，确认还是 17 张表、seed 行数都对；验证脚本用 verify_step3_v003.py，不要用旧的 verify_step3.py。
+- 推送时不要把 `data/`、验证脚本（verify_step3.py、verify_step3_v003.py）、`ADMIN_PASSWORD`、真实密钥推上去；`data/` 是 gitignore 的，验证脚本只在本地跑。注意：verify_step3_v003.py 目前不在 .gitignore 里，推送时要手动排除或先把它加进 .gitignore。
 - 不要在没确认的情况下 force push；如果远程 main 和本地不一致，先看清楚远程多了什么，再决定。
 
 ## 10. 还没定的事项，开发时不要自己定
@@ -136,7 +136,7 @@ FAQ 文本匹配 → 结构化工具（金额、审批、特殊）→ 向量 + �
 ## 11. 开发自查清单
 
 - [ ] 工作目录是仓库克隆后的项目根目录 `finance-assistant/`，不是旧项目
-- [ ] 已跑通删库 → `init_db()` → `seed_db()` → `/api/health`，18 张表、seed 行数都对
+- [ ] 已跑通删库 → `init_db()` → `seed_db()` → `/api/health`，17 张表、seed 行数都对
 - [ ] 已读完 `README.md` 第 5、7、8 节和本文件第 3–7 节
 - [ ] 已知道哪些决策不能改（第 3 节），哪些坑不能踩（第 4–6 节）
 - [ ] 接口按分组做，做完先自测，漏了的接口明说了，没有混在“完成”里
